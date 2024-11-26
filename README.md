@@ -18,5 +18,5 @@ This keybinding daemon is designed to be modal, but not in quite the same way as
 
 - [ ] Implement the basic keymapping system
 - [ ] Make custom configuration available
-- [ ] Something inbetween...
+- [ ] Something in-between...
 - [ ] Done :)
