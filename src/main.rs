@@ -1,10 +1,11 @@
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use tokio::time::{sleep, Duration};
 
 use catalyst::Error;
 
 use std::collections::HashMap;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -14,12 +15,12 @@ enum Mode {
     Window,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Action {
     Nop,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct  KeySequence {
     keys: Vec<u32>,
 }
@@ -43,6 +44,13 @@ impl KeybindingDaemon {
         }
     }
 
+    fn add_keybinding(&mut self, mode: Mode, key_sequence: KeySequence, action: Action) {
+        self.key_sequences
+            .entry(mode)
+            .or_insert_with(HashMap::new)
+            .insert(key_sequence, action);
+    }
+
     fn handle_key_press(&mut self, keycode: u32) -> Option<Action> {
         let now = Instant::now();
 
@@ -56,7 +64,7 @@ impl KeybindingDaemon {
 
         let action = match self.mode {
             Mode::NoWindow => self.handle_no_window_mode(self.current_sequence.clone()),
-            Mode::Window => self.handle_window_mode(),
+            Mode::Window => self.handle_window_mode(self.current_sequence.clone()),
         };
 
         if action.is_some() {
@@ -80,28 +88,67 @@ impl KeybindingDaemon {
     }
 
     fn handle_no_window_mode(&self, sequence: KeySequence) -> Option<Action> {
-        if let Some(bindings) = self.key_sequences.get(&self.mode) {
+    if let Some(bindings) = self.key_sequences.get(&self.mode) {
             bindings.get(&sequence).cloned()
         } else {
             None
         }
     }
 
-    fn handle_window_mode(&self) -> Option<Action> {
-        todo!()
+    fn handle_window_mode(&self, sequence: KeySequence) -> Option<Action> {
+        if let Some(bindings) = self.key_sequences.get(&self.mode) {
+            bindings.get(&sequence).cloned()
+        } else {
+            None
+        }
     }
 }
 
-fn main() -> Result<()> {
-    let (conn, screen_num) = x11rb::connect(None)?;
-    let screen = &conn.setup().roots[screen_num];
-    let root = screen.root;
+struct Desktop {
+    conn: x11rb::rust_connection::RustConnection,
+    num: usize,
+    root: Window,
+}
+
+impl Desktop {
+    fn new() -> Result<Self> {
+        let (conn, num) = x11rb::connect(None)?;
+        let screen = &conn.setup().roots[num];
+        let root = screen.root;
+
+        Ok(Desktop {
+            conn,
+            num,
+            root,
+        })
+    }
+
+    fn check_for_open_windows(&self) -> Result<bool> {
+        let cookie = self.conn.query_tree(self.root)?;
+        let reply = cookie.reply()?;
+
+        Ok(!reply.children.is_empty())
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let desktop = Desktop::new()?;
     let mut keybinding_store = KeybindingDaemon::new();
 
-    conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(EventMask::KEY_PRESS))?;
-    conn.flush()?;
+    if desktop.check_for_open_windows()? {
+        keybinding_store.mode = Mode::Window;
+    } else {
+        keybinding_store.mode = Mode::NoWindow;
+    }
 
-    keybinding_store.handle_key_press(0);
+    desktop.conn.change_window_attributes(desktop.root, &ChangeWindowAttributesAux::new().event_mask(EventMask::KEY_PRESS))?;
+    desktop.conn.flush()?;
+
+    keybinding_store.add_keybinding(Mode::Window, KeySequence { keys: vec![ 20, 73 ] }, Action::Nop );
+
+    println!("{:?}", keybinding_store.handle_key_press(20));
+    println!("{:?}", keybinding_store.handle_key_press(73));
 
     Ok(())
 }

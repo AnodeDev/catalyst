@@ -7,6 +7,7 @@ pub enum Error {
     ConnectError(errors::ConnectError),
     ConnectionError(errors::ConnectionError),
     ReplyOrIdError(errors::ReplyOrIdError),
+    ReplyError(errors::ReplyError),
 }
 
 impl From<std::io::Error> for Error {
@@ -33,6 +34,12 @@ impl From<errors::ReplyOrIdError> for Error {
     }
 }
 
+impl From<errors::ReplyError> for Error {
+    fn from(error: errors::ReplyError) -> Self {
+        Error::ReplyError(error)
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl fmt::Display for Error {
@@ -42,6 +49,7 @@ impl fmt::Display for Error {
             Error::ConnectError(e) => write!(f, "{}", e),
             Error::ConnectionError(e) => write!(f, "{}", e),
             Error::ReplyOrIdError(e) => write!(f, "{}", e),
+            Error::ReplyError(e) => write!(f, "{}", e),
         }
     }
 }
